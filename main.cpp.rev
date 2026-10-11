@@ -1,0 +1,220 @@
+#include <cctype>
+#include <fstream>
+#include <functional>
+#include <stdexcept>
+#include <vector>
+#include <filesystem>
+#include <iostream>
+#include <unordered_map>
+
+
+std::unordered_map<std::string, int> INT_VARS;
+std::unordered_map<std::string, std::string> STRING_VARS;
+
+enum class TokenType { T_INT=0, V_INT=1, T_STRING=2, V_STRING=3, IDEN=4, EQUAL=5, PRINT=6, SEMICOLON=7, QUOTATION=8, O_BRACKET=9, C_BRACKET=10, COMMA=11 };
+std::unordered_map<std::string, TokenType> TypeLookup = {
+  {"int", TokenType::T_INT},
+  {"string", TokenType::T_STRING},
+  {"=", TokenType::EQUAL},
+  {";", TokenType::SEMICOLON},
+  {"\"", TokenType::QUOTATION},
+  {"(", TokenType::O_BRACKET},
+  {")", TokenType::C_BRACKET},
+  {",", TokenType::COMMA},
+  {"print", TokenType::PRINT}
+};
+
+std::unordered_map<TokenType, std::string> err_msg_map = {
+  {TokenType::IDEN, "Excpected a variable name."},
+  {TokenType::EQUAL, "Excpected ;."},
+  {TokenType::V_INT, "Excpected value for the variable"},
+};
+
+struct Token {
+  TokenType type;
+  std::string content;
+  int line, col;
+};
+
+bool isNumber(std::string in) {
+  if (in.empty()) return false;
+  size_t i = 0;
+  while (i<in.size())
+    if (!std::isdigit(in[i++])) return false;
+
+  return true;
+}
+
+std::vector<Token> lex(std::string src) {
+  std::vector<Token> out;
+
+  int line = 1;
+  int col = 1;
+  size_t i = 0;
+  
+  while (i<src.size()) {
+    if (src[i] == '\n') { i++; line++; col=1; continue; }
+    else if (src[i] == '"') {
+      size_t j = i+1;
+      std::string word;
+      while (j<src.size() && src[j] != '"') {
+        word += src[j++];
+      }
+      if (j >= src.size()) throw std::runtime_error("dsada");
+      i = j+1;
+      out.push_back({TokenType::V_STRING, word, line, col});
+      col += word.size();
+    }
+    else if (std::isalnum(src[i])) {
+      size_t j = i;
+      std::string word;
+      while (j<src.size()) {
+        if (std::isalnum(src[j])) {
+          word += src[j++];
+        }
+        else break;
+      }
+      i = j;
+      bool typeExists = TypeLookup.find(word) != TypeLookup.end();
+      TokenType type;
+      if (typeExists) type = TypeLookup[word];
+      else {
+        if (isNumber(word)) type = TokenType::V_INT;
+        else type = TokenType::IDEN;
+      }
+
+      out.push_back({type, word, line, col});
+      col += word.size();
+    } 
+    else if (std::ispunct(src[i])) {
+      out.push_back({TypeLookup[std::string(1, src[i])], std::string(1, src[i]), line, col});
+      col++;
+      i++;
+    }
+    else {
+      i++; col++;
+    }
+  } 
+  return out;
+}
+
+void parse(std::vector<Token> tokens) {
+  for (size_t i=0; i<tokens.size(); i++) {
+    Token t = tokens[i];
+    switch (t.type) {
+      // case TokenType::T_INT:
+      //   std::cout<<tokens[i+3].content<<std::endl;
+      //   INT_VARS[tokens[++i].content] = std::stoi(tokens[i+2].content);
+      //   i += 3;
+      //
+      //   break;
+      case TokenType::T_STRING:
+        STRING_VARS[tokens[++i].content] = tokens[i+4].content;
+        i += 5;
+      default:
+        break;
+    }
+  }
+}
+
+std::string getSrc(std::string fileName) {
+  if (!std::filesystem::exists(fileName)) {
+    throw "File not found: "+fileName;
+    return nullptr;
+  }
+  std::string line;
+  std::string content = "";
+
+  std::ifstream file(fileName);
+
+  while (std::getline(file, line)) 
+    content += line + "\n";
+
+  file.close();
+
+  return content;
+}
+
+bool check(const std::vector<Token> &ts, TokenType t, const size_t &i) {
+  return i<ts.size() && ts[i].type == t;
+}
+
+bool match(const std::vector<Token> &ts, TokenType t, size_t &i) {
+  if (check(ts, t, i)) { i++; return true; }
+  return false;
+}
+
+Token expect(const std::vector<Token> &ts, TokenType t, size_t &i) {
+  if (!check(ts, t, i)) throw std::runtime_error(err_msg_map[t]);
+  return ts[i++];
+}
+
+void interpret(std::string fileName) {
+  std::vector<Token> ts = lex(getSrc(fileName));
+
+  size_t i=0;
+
+  while (i<ts.size()) {
+    switch (ts[i].type) {
+      case TokenType::T_INT: {
+        i++;
+        Token iden = expect(ts, TokenType::IDEN, i);
+        int value;
+        if (match(ts, TokenType::EQUAL, i)) {
+          Token v = expect(ts, TokenType::V_INT, i);
+          value = std::stoi(v.content);
+        }
+        expect(ts, TokenType::SEMICOLON, i);
+        INT_VARS[iden.content] = value;
+        break;
+      }
+      case TokenType::T_STRING: {
+        i++;
+        Token iden = expect(ts, TokenType::IDEN, i);
+        std::string value;
+        if (match(ts, TokenType::EQUAL, i)) {
+          Token v = expect(ts, TokenType::V_STRING, i);
+          value = v.content;
+        }
+        expect(ts, TokenType::SEMICOLON, i);
+        STRING_VARS[iden.content] = value;
+        break;
+      }
+      case TokenType::PRINT: {
+        i++;
+        expect(ts, TokenType::O_BRACKET, i);
+        bool running = true;
+        std::string word;
+        while (running) {
+          Token t = ts[i];
+          word += t.content;
+          if (match(ts, TokenType::COMMA, i)) {
+            
+          }
+        }
+        break;
+      }
+      default: 
+        break;
+    }
+  }
+}
+
+int main(int argc, char* argv[]) {
+  std::vector<Token> tokens = lex(getSrc(argv[argc-1]));
+  // parse(tokens);
+  interpret(argv[argc-1]);
+  // for (const auto& [type, content, line, col] : tokens) {
+  //   std::cout<<static_cast<int>(type)<<", "<<content<<", "<<line<<":"<<col<<std::endl;
+  // }
+
+  std::cout<<"Ints"<<std::endl;
+  for (const auto& [key, val] : INT_VARS) {
+    std::cout<<key<<":"<<val<<std::endl;
+  }
+  std::cout<<"Strings"<<std::endl;
+  for (const auto& [key, val] : STRING_VARS) {
+    std::cout<<key<<":"<<val<<std::endl;
+  }
+  return 0;
+}
