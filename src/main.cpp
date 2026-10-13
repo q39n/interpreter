@@ -52,7 +52,6 @@ bool isFloat(std::string in) {
   int decimalPoints = 0;
   size_t i = 0;
   while (i<in.size()) {
-    std::cout<<in[i]<<std::endl;
     if (in[i] == '.') decimalPoints++;
     else if (!std::isdigit(in[i])) return false;
     i++;
@@ -84,7 +83,7 @@ std::vector<Token> lex(std::string src) {
       size_t j = i;
       std::string word;
       while (j<src.size()) {
-        if (std::isalnum(src[j])) {
+        if (std::isalnum(src[j]) || src[j] == '.') {
           word += src[j++];
         }
         else break;
@@ -94,7 +93,6 @@ std::vector<Token> lex(std::string src) {
       TokenType type;
       if (typeExists) type = TypeLookup[word];
       else {
-        std::cout<<(isFloat(word) ? "Float" : "Not float")<<std::endl;
         if (isInt(word)) type = TokenType::V_INT;
         else if (isFloat(word)) type = TokenType::V_FLOAT;
         else type = TokenType::IDEN;
@@ -188,7 +186,7 @@ void interpret(std::string fileName) {
       case TokenType::T_FLOAT: {
         i++;
         Token iden = expect(ts, TokenType::IDEN, i);
-        int value;
+        float value;
         if (match(ts, TokenType::EQUAL, i)) {
           Token v = expect(ts, TokenType::V_FLOAT, i);
           value = std::stof(v.content);
@@ -216,15 +214,18 @@ void interpret(std::string fileName) {
         std::string word;
         while (running) {
           if (match(ts, TokenType::COMMA, i)) word+= " ";
-          if (check(ts, TokenType::V_STRING, i) || check(ts, TokenType::V_INT, i)) word += ts[i++].content;
+          if (check(ts, TokenType::V_STRING, i) || check(ts, TokenType::V_INT, i) || check(ts, TokenType::V_FLOAT, i)) word += ts[i++].content;
           else if (check(ts, TokenType::IDEN, i)) {
             // std::cout<<ts[i].content<<std::endl;
             // std::cout<<ts[i].content<<std::endl;
             bool isIntVar = INT_VARS.find(ts[i].content) != INT_VARS.end();
+            bool isFloatVar = FLOAT_VARS.find(ts[i].content) != FLOAT_VARS.end();
             bool isStringVar = STRING_VARS.find(ts[i].content) != STRING_VARS.end();
             // std::cout<<(isIntVar ? "Int" : "Not Int")<<std::endl;
+            // std::cout<<(isFloatVar ? "Float" : "Not Float")<<std::endl;
             // std::cout<<(isStringVar ? "String" : "Not String")<<std::endl;
             if (isIntVar) word += std::to_string(INT_VARS[ts[i].content]);
+            else if (isFloatVar) word += std::to_string(FLOAT_VARS[ts[i].content]);
             else if (isStringVar) word += STRING_VARS[ts[i].content];
             else throw std::runtime_error("Variable not found.");
             i++;
@@ -240,10 +241,10 @@ void interpret(std::string fileName) {
 int main(int argc, char* argv[]) {
   std::vector<Token> tokens = lex(getSrc(argv[argc-1]));
   // parse(tokens);
-  // interpret(argv[argc-1]);
-  for (const auto& [type, content, line, col] : tokens) {
-    std::cout<<static_cast<int>(type)<<", "<<content<<", "<<line<<":"<<col<<std::endl;
-  }
+  interpret(argv[argc-1]);
+  // for (const auto& [type, content, line, col] : tokens) {
+  //   std::cout<<static_cast<int>(type)<<", "<<content<<", "<<line<<":"<<col<<std::endl;
+  // }
 
   // std::cout<<"Ints"<<std::endl;
   // for (const auto& [key, val] : INT_VARS) {

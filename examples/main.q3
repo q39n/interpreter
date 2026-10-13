@@ -1,2 +1,3 @@
 int age = 19;
-print("My age dwadais", "wwww", 22.0, age);
+float height = 178.9;
+print("My age is", age, "and me height is", height);
